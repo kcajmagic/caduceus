@@ -1,5 +1,5 @@
-hash: 79d218d032586eff7871e291e80ba1c3be45c6db24df62634158728cedab0e1f
-updated: 2017-07-27T15:13:21.857883513-07:00
+hash: f198dc9abed833875765f1ed2a91d3d1cf3deeb152b4e365869d09984cdf6498
+updated: 2017-08-02T14:46:20.617647534-07:00
 imports:
 - name: github.com/aws/aws-sdk-go
   version: 7be45195c3af1b54a609812f90c05a7e492e2491
@@ -34,7 +34,7 @@ imports:
   subpackages:
   - linux
 - name: github.com/Comcast/webpa-common
-  version: d9d08a4533cc23274f3e1898893884a30be97054
+  version: 2a34f4bb4e58ab1b0df77cf052a1a098aec1a282
   subpackages:
   - concurrent
   - handler
@@ -122,9 +122,10 @@ imports:
 - name: github.com/stretchr/testify
   version: 69483b4bd14f5845b5a1e55bca19e954e827f1d0
   subpackages:
-  - mock
   - assert
   - require
+  - mock
+  - linux
 - name: github.com/t-k/fluent-logger-golang
   version: 0f8ec08f2057a61574b6943e75045fffbeae894e
   subpackages:
@@ -138,11 +139,11 @@ imports:
   subpackages:
   - codec
 - name: golang.org/x/sys
-  version: 35ef4487ce0a1ea5d4b616ffe71e34febe723695
+  version: e312636bdaa2fac4f0acde9d17ab9fbad2b4ad10
   subpackages:
   - unix
 - name: golang.org/x/text
-  version: 836efe42bb4aa16aaa17b9c155d8813d336ed720
+  version: 3bd178b88a8180be2df394a1fbb81313916f0e7b
   subpackages:
   - transform
   - unicode/norm
