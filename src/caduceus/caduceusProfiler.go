@@ -122,6 +122,12 @@ func (a int64Array) Len() int           { return len(a) }
 func (a int64Array) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a int64Array) Less(i, j int) bool { return a[i] < a[j] }
 
+// get98th returns the 98% indice value.
+// example: in an array with length of 100. index 97 would be the 98th.
+func get98th(list []interface{}) int64 {
+	return int64(math.Ceil(float64(len(list))*0.98) - 1)
+}
+
 func (cp *caduceusProfiler) process(raw []interface{}) []interface{} {
 
 	rv := make([]interface{}, 1)
