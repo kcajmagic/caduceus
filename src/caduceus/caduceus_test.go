@@ -216,6 +216,20 @@ func TestServerHandler(t *testing.T) {
 		fakeHandler.AssertExpectations(t)
 		fakeHealth.AssertExpectations(t)
 	})
+
+	t.Run("TestServeHTTPnilResponse", func(t *testing.T) {
+
+		// w := httptest.NewRecorder()
+		requestTimeout := func(func(workerID int)) error {
+			return errors.New("Intentional error.")
+		}
+		serverWrapper.doJob = requestTimeout
+		// TODO Need to figure out how to pass in an empty request
+		//serverWrapper.ServeHTTP(w, &http.Request{})
+
+		fakeHandler.AssertExpectations(t)
+		fakeHealth.AssertExpectations(t)
+	})
 }
 
 func TestProfilerHandler(t *testing.T) {
