@@ -149,13 +149,9 @@ func caduceus(arguments []string) int {
 	childCaduceusProfilerFactory := mainCaduceusProfilerFactory
 	childCaduceusProfilerFactory.Parent = caduceusHandlerProfiler
 
-	tr := &http.Transport{
-		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
-		MaxIdleConnsPerHost:   caduceusConfig.SenderNumWorkersPerSender,
-		ResponseHeaderTimeout: 10 * time.Second, // TODO Make this configurable
-	}
-
-	timeout := time.Duration(caduceusConfig.SenderClientTimeout) * time.Second
+	clientTimeout := time.Duration(caduceusConfig.SenderClientTimeout) * time.Second
+	dialerTimeout := time.Duration(caduceusConfig.SenderDialerTimeout) * time.Second
+	responseHeaderTimeout := time.Duration(caduceusConfig.ResponseHeaderTimeout) * time.Second
 
 	// declare a new sender wrapper and pass it a profiler factory so that it can create
 	// unique profilers on a per outboundSender basis
@@ -166,7 +162,14 @@ func caduceus(arguments []string) int {
 		Linger:              time.Duration(caduceusConfig.SenderLinger) * time.Second,
 		ProfilerFactory:     childCaduceusProfilerFactory,
 		Logger:              logger,
-		Client:              &http.Client{Transport: tr, Timeout: timeout},
+		Client: &http.Client{Timeout: clientTimeout,
+			Transport: &http.Transport{
+				TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+				MaxIdleConnsPerHost:   caduceusConfig.SenderNumWorkersPerSender,
+				ResponseHeaderTimeout: responseHeaderTimeout,
+				Dial: (&net.Dialer{
+					Timeout: dialerTimeout,
+				}).Dial}},
 	}.New()
 
 	if err != nil {
