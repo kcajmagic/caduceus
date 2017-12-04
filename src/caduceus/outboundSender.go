@@ -27,6 +27,7 @@ import (
 	"github.com/Comcast/webpa-common/logging"
 	"github.com/Comcast/webpa-common/webhook"
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/metrics/provider"
 	"hash"
 	"io"
 	"io/ioutil"
@@ -83,9 +84,7 @@ type OutboundSenderFactory struct {
 	// Must be greater then 0 seconds
 	CutOffPeriod time.Duration
 
-	// The factory that we'll use to make new ServerProfilers on a per
-	// outboundSender basis
-	ProfilerFactory ServerProfilerFactory
+	Provider provider.Provider
 
 	// The logger to use.
 	Logger log.Logger
@@ -110,7 +109,7 @@ type CaduceusOutboundSender struct {
 	matcher      []*regexp.Regexp
 	queueSize    int
 	queue        chan outboundRequest
-	profiler     ServerProfiler
+	provider     provider.Provider
 	wg           sync.WaitGroup
 	cutOffPeriod time.Duration
 	failureMsg   FailureMessage
@@ -166,11 +165,6 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		if _, err = url.ParseRequestURI(osf.Listener.FailureURL); nil != err {
 			return
 		}
-	}
-
-	caduceusOutboundSender.profiler, err = osf.ProfilerFactory.New(osf.Listener.Config.URL)
-	if err != nil {
-		return
 	}
 
 	// Give us some head room so that we don't block when we get near the
@@ -444,18 +438,12 @@ func (obs *CaduceusOutboundSender) worker(id int) {
 				resp, err := obs.client.Do(req)
 				work.req.Telemetry.TimeResponded = time.Now()
 				if nil != err {
-					// Report failure
-					work.req.Telemetry.Status = TelemetryStatusFailure
-					obs.profiler.Send(work.req.Telemetry)
+					// TODO Report failure
 				} else {
 					if (200 <= resp.StatusCode) && (resp.StatusCode <= 204) {
-						// Report success
-						work.req.Telemetry.Status = TelemetryStatusSuccess
-						obs.profiler.Send(work.req.Telemetry)
+						// TODO Report success
 					} else {
-						// Report partial success
-						work.req.Telemetry.Status = TelemetryStatusPartialSuccess
-						obs.profiler.Send(work.req.Telemetry)
+						// TODO Report partial success
 					}
 
 					// read until the response is complete before closing to allow

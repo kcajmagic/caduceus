@@ -21,6 +21,7 @@ import (
 	"github.com/Comcast/webpa-common/webhook"
 	"github.com/Comcast/webpa-common/wrp"
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/metrics/provider"
 	"net/http"
 	"net/url"
 	"strings"
@@ -43,9 +44,8 @@ type SenderWrapperFactory struct {
 	// shutting them down and cleaning up the resources associated with them.
 	Linger time.Duration
 
-	// The factory that we'll use to make new ServerProfilers on a per
-	// outboundSender basis
-	ProfilerFactory ServerProfilerFactory
+	// The metrics implementation
+	Provider provider.Provider
 
 	// The logger implementation to share with OutboundSenders.
 	Logger log.Logger
@@ -70,7 +70,7 @@ type CaduceusSenderWrapper struct {
 	logger              log.Logger
 	mutex               sync.RWMutex
 	senders             map[string]OutboundSender
-	profilerFactory     ServerProfilerFactory
+	provider            provider.Provider
 	wg                  sync.WaitGroup
 	shutdown            chan struct{}
 }
@@ -85,7 +85,7 @@ func (swf SenderWrapperFactory) New() (sw SenderWrapper, err error) {
 		cutOffPeriod:        swf.CutOffPeriod,
 		linger:              swf.Linger,
 		logger:              swf.Logger,
-		profilerFactory:     swf.ProfilerFactory,
+		provider:            swf.Provider,
 	}
 
 	if swf.Linger <= 0 {
@@ -110,12 +110,12 @@ func (swf SenderWrapperFactory) New() (sw SenderWrapper, err error) {
 func (sw *CaduceusSenderWrapper) Update(list []webhook.W) {
 	// We'll like need this, so let's get one ready
 	osf := OutboundSenderFactory{
-		Client:          sw.client,
-		CutOffPeriod:    sw.cutOffPeriod,
-		NumWorkers:      sw.numWorkersPerSender,
-		QueueSize:       sw.queueSizePerSender,
-		ProfilerFactory: sw.profilerFactory,
-		Logger:          sw.logger,
+		Client:       sw.client,
+		CutOffPeriod: sw.cutOffPeriod,
+		NumWorkers:   sw.numWorkersPerSender,
+		QueueSize:    sw.queueSizePerSender,
+		Provider:     sw.provider,
+		Logger:       sw.logger,
 	}
 
 	ids := make([]struct {

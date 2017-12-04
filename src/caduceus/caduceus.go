@@ -34,6 +34,7 @@ import (
 	"github.com/Comcast/webpa-common/server"
 	"github.com/Comcast/webpa-common/webhook"
 	"github.com/SermoDigital/jose/jwt"
+	"github.com/go-kit/kit/metrics/provider"
 	"github.com/gorilla/mux"
 	"github.com/justinas/alice"
 	"github.com/spf13/pflag"
@@ -132,22 +133,7 @@ func caduceus(arguments []string) int {
 		QueueSize:  caduceusConfig.JobQueueSize,
 	}.New()
 
-	mainCaduceusProfilerFactory := ServerProfilerFactory{
-		Frequency: caduceusConfig.ProfilerFrequency,
-		Duration:  caduceusConfig.ProfilerDuration,
-		QueueSize: caduceusConfig.ProfilerQueueSize,
-		Logger:    logger,
-	}
-
-	// here we create a profiler specifically for our main server handler
-	caduceusHandlerProfiler, err := mainCaduceusProfilerFactory.New("main")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to profiler for main caduceus handler: %s\n", err)
-		return 1
-	}
-
-	childCaduceusProfilerFactory := mainCaduceusProfilerFactory
-	childCaduceusProfilerFactory.Parent = caduceusHandlerProfiler
+	webPA.GoKitMetricsProvider = provider.NewPrometheusProvider("xmidt", "caduceus")
 
 	tr := &http.Transport{
 		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
@@ -157,14 +143,12 @@ func caduceus(arguments []string) int {
 
 	timeout := time.Duration(caduceusConfig.SenderClientTimeout) * time.Second
 
-	// declare a new sender wrapper and pass it a profiler factory so that it can create
-	// unique profilers on a per outboundSender basis
 	caduceusSenderWrapper, err := SenderWrapperFactory{
 		NumWorkersPerSender: caduceusConfig.SenderNumWorkersPerSender,
 		QueueSizePerSender:  caduceusConfig.SenderQueueSizePerSender,
 		CutOffPeriod:        time.Duration(caduceusConfig.SenderCutOffPeriod) * time.Second,
 		Linger:              time.Duration(caduceusConfig.SenderLinger) * time.Second,
-		ProfilerFactory:     childCaduceusProfilerFactory,
+		Provider:            webPA.GoKitMetricsProvider,
 		Logger:              logger,
 		Client:              &http.Client{Transport: tr, Timeout: timeout},
 	}.New()
@@ -175,18 +159,13 @@ func caduceus(arguments []string) int {
 	}
 
 	serverWrapper := &ServerHandler{
-		Logger: logger,
+		Logger:   logger,
+		Provider: webPA.GoKitMetricsProvider,
 		caduceusHandler: &CaduceusHandler{
-			handlerProfiler: caduceusHandlerProfiler,
-			senderWrapper:   caduceusSenderWrapper,
-			Logger:          logger,
+			senderWrapper: caduceusSenderWrapper,
+			Logger:        logger,
 		},
 		doJob: workerPool.Send,
-	}
-
-	profileWrapper := &ProfileHandler{
-		profilerData: caduceusHandlerProfiler,
-		Logger:       logger,
 	}
 
 	validator, err := getValidator(v)
@@ -207,8 +186,6 @@ func caduceus(arguments []string) int {
 	router := mux.NewRouter()
 
 	router = configServerRouter(router, caduceusHandler, serverWrapper)
-
-	router.Handle("/api/v3/profile", caduceusHandler.Then(profileWrapper))
 
 	webhookFactory, err := webhook.NewFactory(v)
 	if err != nil {

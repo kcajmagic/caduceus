@@ -17,9 +17,9 @@
 package main
 
 import (
-	"encoding/json"
 	"github.com/Comcast/webpa-common/logging"
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/metrics/provider"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -30,6 +30,7 @@ type Send func(inFunc func(workerID int)) error
 // Below is the struct that will implement our ServeHTTP method
 type ServerHandler struct {
 	log.Logger
+	provider.Provider
 	caduceusHandler RequestHandler
 	caduceusHealth  HealthTracker
 	doJob           Send
@@ -80,35 +81,5 @@ func (sh *ServerHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 		debugLog.Log(messageKey, "Request placed on to queue.")
 
 		sh.caduceusHealth.IncrementBucket(caduceusRequest.Telemetry.RawPayloadSize)
-	}
-}
-
-type ProfileHandler struct {
-	profilerData ServerProfiler
-	log.Logger
-}
-
-// ServeHTTP method of ProfileHandler will output the most recent messages
-// that the main handler has successfully dealt with
-func (ph *ProfileHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	logging.Info(ph.Logger).Log(logging.MessageKey(), "Receiving request for server stats...")
-
-	stats := ph.profilerData.Report()
-
-	b, err := json.Marshal(stats)
-
-	if nil == stats {
-		b = []byte("[]")
-		err = nil
-	}
-
-	if err != nil {
-		response.WriteHeader(http.StatusInternalServerError)
-		response.Write([]byte("Error marshalling the data into a JSON object."))
-	} else {
-		response.Header().Set("Content-Type", "application/json")
-		response.WriteHeader(http.StatusOK)
-		response.Write(b)
-		response.Write([]byte("\n"))
 	}
 }

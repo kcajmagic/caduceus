@@ -109,8 +109,7 @@ type RequestHandler interface {
 }
 
 type CaduceusHandler struct {
-	handlerProfiler ServerProfiler
-	senderWrapper   SenderWrapper
+	senderWrapper SenderWrapper
 	log.Logger
 }
 
