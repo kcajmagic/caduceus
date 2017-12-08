@@ -175,7 +175,10 @@ func caduceus(arguments []string) int {
 	}
 
 	serverWrapper := &ServerHandler{
-		Logger: logger,
+		bodyErrorCounter:   webPA.GoKitMetricsProvider.NewCounter("http_unable_to_retreive_body"),
+		msgEnqueuedCounter: webPA.GoKitMetricsProvider.NewCounter("incoming_msg_enqueued"),
+		msgDroppedCounter:  webPA.GoKitMetricsProvider.NewCounter("incoming_msg_dropped"),
+		Logger:             logger,
 		caduceusHandler: &CaduceusHandler{
 			handlerProfiler: caduceusHandlerProfiler,
 			senderWrapper:   caduceusSenderWrapper,

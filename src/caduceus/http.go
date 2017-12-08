@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"github.com/Comcast/webpa-common/logging"
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/metrics"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -30,9 +31,12 @@ type Send func(inFunc func(workerID int)) error
 // Below is the struct that will implement our ServeHTTP method
 type ServerHandler struct {
 	log.Logger
-	caduceusHandler RequestHandler
-	caduceusHealth  HealthTracker
-	doJob           Send
+	msgEnqueuedCounter metrics.Counter
+	msgDroppedCounter  metrics.Counter
+	bodyErrorCounter   metrics.Counter
+	caduceusHandler    RequestHandler
+	caduceusHealth     HealthTracker
+	doJob              Send
 }
 
 func (sh *ServerHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -51,6 +55,7 @@ func (sh *ServerHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 	payload, err := ioutil.ReadAll(request.Body)
 	if err != nil {
 		errorLog.Log(messageKey, "Unable to retrieve the request body.", errorKey, err.Error)
+		sh.bodyErrorCounter.Add(1)
 		return
 	}
 
@@ -70,11 +75,13 @@ func (sh *ServerHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 
 	if err != nil {
 		// return a 408
+		sh.msgDroppedCounter.Add(1)
 		response.WriteHeader(http.StatusRequestTimeout)
 		response.Write([]byte("Unable to handle request at this time.\n"))
 		debugLog.Log(messageKey, "Unable to handle request at this time.")
 	} else {
 		// return a 202
+		sh.msgEnqueuedCounter.Add(1)
 		response.WriteHeader(http.StatusAccepted)
 		response.Write([]byte("Request placed on to queue.\n"))
 		debugLog.Log(messageKey, "Request placed on to queue.")

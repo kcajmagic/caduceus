@@ -45,11 +45,20 @@ func TestServerHandler(t *testing.T) {
 		return nil
 	}
 
+	fakeEnqueued := new(mockCounter)
+	fakeEnqueued.On("Add", mock.AnythingOfType("float64")).Return().Once()
+
+	fakeBodyError := new(mockCounter)
+	fakeDropped := new(mockCounter)
+
 	serverWrapper := &ServerHandler{
-		Logger:          logger,
-		caduceusHandler: fakeHandler,
-		caduceusHealth:  fakeHealth,
-		doJob:           requestSuccessful,
+		bodyErrorCounter:   fakeBodyError,
+		msgEnqueuedCounter: fakeEnqueued,
+		msgDroppedCounter:  fakeDropped,
+		Logger:             logger,
+		caduceusHandler:    fakeHandler,
+		caduceusHealth:     fakeHealth,
+		doJob:              requestSuccessful,
 	}
 
 	req := httptest.NewRequest("POST", "localhost:8080", strings.NewReader("Test payload."))
@@ -64,9 +73,14 @@ func TestServerHandler(t *testing.T) {
 		resp := w.Result()
 
 		assert.Equal(202, resp.StatusCode)
+		fakeBodyError.AssertExpectations(t)
+		fakeEnqueued.AssertExpectations(t)
+		fakeDropped.AssertExpectations(t)
 		fakeHandler.AssertExpectations(t)
 		fakeHealth.AssertExpectations(t)
 	})
+
+	fakeDropped.On("Add", mock.AnythingOfType("float64")).Return().Once()
 
 	t.Run("TestServeHTTPFullQueue", func(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
@@ -80,6 +94,11 @@ func TestServerHandler(t *testing.T) {
 		resp := w.Result()
 
 		assert.Equal(http.StatusRequestTimeout, resp.StatusCode)
+		fakeBodyError.AssertExpectations(t)
+		fakeEnqueued.AssertExpectations(t)
+		fakeDropped.AssertExpectations(t)
+		fakeHandler.AssertExpectations(t)
+		fakeHealth.AssertExpectations(t)
 	})
 }
 

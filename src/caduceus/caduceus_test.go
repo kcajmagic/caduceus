@@ -53,11 +53,23 @@ func TestMuxServerConfig(t *testing.T) {
 		return errors.New("time out!")
 	}
 
+	fakeBodyError := new(mockCounter)
+	fakeBodyError.On("Add", mock.AnythingOfType("float64")).Return().Times(0)
+
+	fakeEnqueued := new(mockCounter)
+	fakeEnqueued.On("Add", mock.AnythingOfType("float64")).Return().Once()
+
+	fakeDropped := new(mockCounter)
+	fakeDropped.On("Add", mock.AnythingOfType("float64")).Return().Times(0)
+
 	serverWrapper := &ServerHandler{
-		Logger:          logger,
-		caduceusHandler: fakeHandler,
-		caduceusHealth:  fakeHealth,
-		doJob:           forceTimeOut,
+		bodyErrorCounter:   fakeBodyError,
+		msgEnqueuedCounter: fakeEnqueued,
+		msgDroppedCounter:  fakeDropped,
+		Logger:             logger,
+		caduceusHandler:    fakeHandler,
+		caduceusHealth:     fakeHealth,
+		doJob:              forceTimeOut,
 	}
 
 	authHandler := handler.AuthorizationHandler{Validator: nil}
