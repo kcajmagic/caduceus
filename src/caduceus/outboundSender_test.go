@@ -19,7 +19,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-
 	"github.com/Comcast/webpa-common/webhook"
 	"github.com/Comcast/wrp-go/wrp"
 	"github.com/davecgh/go-spew/spew"
@@ -55,7 +54,7 @@ func getNewTestOutputLogger(out io.Writer) log.Logger {
 }
 
 func simpleSetup(trans *transport, cutOffPeriod time.Duration, matcher []string) (OutboundSender, error) {
-	return simpleFactorySetup(trans, cutOffPeriod, matcher).New()
+	return simpleFactorySetup(trans, cutOffPeriod, matcher, 3, []string{}).New()
 }
 
 // simpleFactorySetup sets up a outboundSender with metrics.
@@ -73,7 +72,7 @@ func simpleSetup(trans *transport, cutOffPeriod time.Duration, matcher []string)
 //	    case 2: On("With", []string{"event", unknown}
 // 4. Mimic the metric behavior using On:
 //      fakeSlow.On("Add", 1.0).Return()
-func simpleFactorySetup(trans *transport, cutOffPeriod time.Duration, matcher []string) *OutboundSenderFactory {
+func simpleFactorySetup(trans *transport, cutOffPeriod time.Duration, matcher []string, maxRetry int, altURLS []string) *OutboundSenderFactory {
 	if nil == trans.fn {
 		trans.fn = func(req *http.Request, count int) (resp *http.Response, err error) {
 			resp = &http.Response{Status: "200 OK",
@@ -90,6 +89,8 @@ func simpleFactorySetup(trans *transport, cutOffPeriod time.Duration, matcher []
 	w.Config.URL = "http://localhost:9999/foo"
 	w.Config.ContentType = "application/json"
 	w.Config.Secret = "123456"
+	w.Config.AlternativeURLs = altURLS
+	w.Config.MaxRetryCount = maxRetry
 	w.Matcher.DeviceId = matcher
 
 	// test dc metric
@@ -478,7 +479,7 @@ func TestInvalidSender(t *testing.T) {
 	assert := assert.New(t)
 
 	trans := &transport{}
-	obsf := simpleFactorySetup(trans, time.Second, nil)
+	obsf := simpleFactorySetup(trans, time.Second, nil, 3, []string{})
 	obsf.Sender = nil
 	obs, err := obsf.New()
 	assert.Nil(obs)
@@ -497,7 +498,7 @@ func TestInvalidLogger(t *testing.T) {
 	w.Config.ContentType = "application/json"
 
 	trans := &transport{}
-	obsf := simpleFactorySetup(trans, time.Second, nil)
+	obsf := simpleFactorySetup(trans, time.Second, nil, 3, []string{})
 	obsf.Listener = w
 	obsf.Sender = (&http.Client{}).Do
 	obsf.Logger = nil
@@ -520,12 +521,67 @@ func TestFailureURL(t *testing.T) {
 	w.Config.ContentType = "application/json"
 
 	trans := &transport{}
-	obsf := simpleFactorySetup(trans, time.Second, nil)
+	obsf := simpleFactorySetup(trans, time.Second, nil, 3, []string{})
 	obsf.Listener = w
 	obsf.Sender = (&http.Client{}).Do
 	obs, err := obsf.New()
 	assert.Nil(obs)
 	assert.NotNil(err)
+}
+
+func TestAltURL(t *testing.T) {
+	assert := assert.New(t)
+
+	urls := map[string]int{}
+
+	w := webhook.W{
+		Until:  time.Now().Add(60 * time.Second),
+		Events: []string{".*"},
+	}
+	w.Config.URL = "http://localhost:9999/foo"
+	w.Config.ContentType = "application/json"
+	w.Config.MaxRetryCount = 4
+	w.Config.AlternativeURLs = []string{
+		"http://localhost:9999/bar",
+		"http://localhost:9999/faa",
+		"http://localhost:9999/bas",
+	}
+
+
+
+	trans := &transport{}
+	trans.fn = func(req *http.Request, count int) (*http.Response, error) {
+		if _, ok := urls[req.URL.Path]; ok {
+			urls[req.URL.Path]++
+		} else {
+			urls[req.URL.Path] = 1
+		}
+
+		return &http.Response{StatusCode: 429}, nil
+	}
+
+	obs, err := simpleSetup(trans, time.Second, nil)
+	assert.Nil(err)
+
+	err = obs.Update(w)
+
+	assert.NotNil(obs)
+	assert.Nil(err)
+
+
+	req := simpleRequest()
+	req.Source = "mac:112233445566"
+	req.TransactionUUID = "1234"
+	req.Destination = "event:iot"
+	obs.Queue(req)
+
+	obs.Shutdown(true)
+
+	assert.Equal(int32(4), trans.i)
+
+	for k, v := range urls {
+		assert.Equal(1, v, k)
+	}
 }
 
 // Simple test that checks for no events
@@ -539,7 +595,7 @@ func TestInvalidEvents(t *testing.T) {
 	w.Config.ContentType = "application/json"
 
 	trans := &transport{}
-	obsf := simpleFactorySetup(trans, time.Second, nil)
+	obsf := simpleFactorySetup(trans, time.Second, nil, 3, []string{})
 	obsf.Listener = w
 	obsf.Sender = (&http.Client{}).Do
 	obs, err := obsf.New()
@@ -554,7 +610,7 @@ func TestInvalidEvents(t *testing.T) {
 	w2.Config.URL = "http://localhost:9999/foo"
 	w2.Config.ContentType = "application/json"
 
-	obsf = simpleFactorySetup(trans, time.Second, nil)
+	obsf = simpleFactorySetup(trans, time.Second, nil, 3, []string{})
 	obsf.Listener = w2
 	obsf.Sender = (&http.Client{}).Do
 	obs, err = obsf.New()
@@ -585,7 +641,7 @@ func TestUpdate(t *testing.T) {
 	w2.Config.ContentType = "application/msgpack"
 
 	trans := &transport{}
-	obsf := simpleFactorySetup(trans, time.Second, nil)
+	obsf := simpleFactorySetup(trans, time.Second, nil, 3, []string{})
 	obsf.Listener = w1
 	obsf.Sender = (&http.Client{}).Do
 	obs, err := obsf.New()
@@ -617,7 +673,7 @@ func TestOverflowNoFailureURL(t *testing.T) {
 	w.Config.ContentType = "application/json"
 
 	trans := &transport{}
-	obsf := simpleFactorySetup(trans, time.Second, nil)
+	obsf := simpleFactorySetup(trans, time.Second, nil, 3, []string{})
 	obsf.Listener = w
 	obsf.Logger = logger
 	obsf.Sender = (&http.Client{}).Do
@@ -663,7 +719,7 @@ func TestOverflowValidFailureURL(t *testing.T) {
 	w.Config.URL = "http://localhost:9999/foo"
 	w.Config.ContentType = "application/json"
 
-	obsf := simpleFactorySetup(trans, time.Second, nil)
+	obsf := simpleFactorySetup(trans, time.Second, nil, 3, []string{})
 	obsf.Listener = w
 	obsf.Logger = logger
 	obs, err := obsf.New()
@@ -708,7 +764,7 @@ func TestOverflowValidFailureURLWithSecret(t *testing.T) {
 	w.Config.ContentType = "application/json"
 	w.Config.Secret = "123456"
 
-	obsf := simpleFactorySetup(trans, time.Second, nil)
+	obsf := simpleFactorySetup(trans, time.Second, nil, 3, []string{})
 	obsf.Listener = w
 	obsf.Logger = logger
 	obs, err := obsf.New()
@@ -744,7 +800,7 @@ func TestOverflowValidFailureURLError(t *testing.T) {
 	w.Config.URL = "http://localhost:9999/foo"
 	w.Config.ContentType = "application/json"
 
-	obsf := simpleFactorySetup(trans, time.Second, nil)
+	obsf := simpleFactorySetup(trans, time.Second, nil, 3, []string{})
 	obsf.Listener = w
 	obsf.Logger = logger
 	obs, err := obsf.New()
@@ -792,7 +848,7 @@ func TestOverflow(t *testing.T) {
 	w.Config.URL = "http://localhost:9999/foo"
 	w.Config.ContentType = "application/json"
 
-	obsf := simpleFactorySetup(trans, 4*time.Second, nil)
+	obsf := simpleFactorySetup(trans, 4*time.Second, nil, 3, []string{})
 	obsf.NumWorkers = 1
 	obsf.QueueSize = 2
 	obsf.Logger = logger

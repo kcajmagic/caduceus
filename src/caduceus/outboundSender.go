@@ -164,6 +164,11 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		return
 	}
 
+	// update default deliver retry count for sender
+	if osf.Listener.Config.MaxRetryCount != 0 {
+		osf.DeliveryRetries = osf.Listener.Config.MaxRetryCount
+	}
+
 	caduceusOutboundSender := &CaduceusOutboundSender{
 		id:               osf.Listener.Config.URL,
 		listener:         osf.Listener,
@@ -518,6 +523,23 @@ func (obs *CaduceusOutboundSender) send(secret, acceptType string, msg *wrp.Mess
 		ShouldRetryStatus: func(code int) bool {
 			return code < 200 || code > 299
 		},
+	}
+
+	// if the consumer request alternative urls update subsequent requests with the new urls.
+	if len(obs.listener.Config.AlternativeURLs) > 0 {
+		index := 0
+		retryOptions.UpdateRequest = func(request *http.Request) {
+			if index >= len(obs.listener.Config.AlternativeURLs) {
+				index = 0
+			}
+			url, err := url.Parse(obs.listener.Config.AlternativeURLs[index])
+			index++
+			if err != nil {
+				logging.Error(obs.logger).Log(logging.MessageKey(), "failed to update url", "url", obs.listener.Config.AlternativeURLs[index], logging.ErrorKey(), err)
+				return
+			}
+			request.URL = url
+		}
 	}
 
 	// Send it
